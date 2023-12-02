@@ -2,7 +2,7 @@
 
 此庫主要是為了`ChartViwer`, 所以本體多處都為空, 並非完整的API
 
-若你有興趣協助開發`ChartViwer`, 請移至[DoroJark\models\chart.py](./DoroJark\models\chart.py)
+若你有興趣協助開發`ChartViwer`, 請移至[DoroJark\models\chart.py](./DoroJark/models/chart.py)
 
 若你對於D4DJ API有興趣的話, 這裡可能對你幫助不大 :(
 但我仍非常願意分享有關於D4的遊戲流程
