@@ -1,11 +1,11 @@
-import json
 import math
+from typing import Any, Dict, List
 from PIL import Image, ImageDraw, ImageFont
+from ..model import Model
 
 
 class Chart:
-    def __init__(self, cl, chartData):
-        self.cl = cl
+    def __init__(self, chartData):
         self.chart = self.ChartDataReader(chartData)
 
         # Settings
@@ -43,6 +43,10 @@ class Chart:
 
         self.DEBUG_IMG_H = 0
 
+        # 部分note的滑塊持續到結束
+        # LaneId, Type
+        self.FIXED_TO_END: Dict[int, int] = {}
+
     def renderTo(self, path):
         img = self.newImg()
         img1 = ImageDraw.Draw(img)
@@ -65,7 +69,7 @@ class Chart:
             self.FRAME_N = 0
             try:
                 self.FRAME_N = self.getNextBarLine(BarLine)
-            except:
+            except Exception as e:
                 IS_END = True
             self.SaveBarLineH(BarLine)
             blh, blw = (self.FRAME_IMG_H - self.FRAME_IMG_S * 2) / (4 * self.FRAME) * (
@@ -78,6 +82,7 @@ class Chart:
             # v1.0.4: 解決 IS_END 導致的錯誤判定
             # v1.0.5: 優化浮水印
             # v1.0.6: 支持斜滑條(黃) / 修正bar line為空
+            # v1.0.6(+): 添加FIXED_TO_END
             if (self.NOW_FRAME > 0 and self.NOW_FRAME % 4 == 0) or IS_END:
                 self.FRAME_E = BarLine
                 if self.NOW_FRAME % (self.FRAME * 4) == 0:
@@ -85,6 +90,23 @@ class Chart:
                     self.FRAME_E = self.FRAME_N
                     self.NOW_FRAME += 1
                     self.SaveBarLineH(self.FRAME_E)
+                if self.FIXED_TO_END:
+                    for fix_l, fix_t in self.FIXED_TO_END.items():
+                        if fix_t == 8:
+                            color = self.getLaneColor(fix_t)
+                            lw_s = fix_l * self.LANE_W + self.FRAME_IMG_P
+                            lw_e = lw_s + self.LANE_W
+                            curr_f = 2 % (self.FRAME * 4)
+                            h = (self.FRAME_IMG_H - self.FRAME_IMG_S * 2) / (
+                                4 * self.FRAME
+                            ) * (curr_f) + self.FRAME_IMG_S
+                            lh_s = self.FRAME_IMG_H
+                            lh_e = self.FRAME_IMG_H - h
+                            img1.rectangle(
+                                [(lw_s, lh_s), (lw_e, lh_e)], fill=color, width=0
+                            )
+                        else:
+                            raise ValueError(f"Not support LaneType: {fix_t}")
                 for note in self.chart["NoteDataList"]:
                     if note in self.PASS_LANE:
                         if note.get("NextId", 0) == 0:
@@ -140,6 +162,9 @@ class Chart:
                                 INC_NEXT and IS_OUT_RANGE,
                                 _IS_START_RANGE,
                             )
+                            if _bt == -1:
+                                self.FIXED_TO_END[nextNote["LaneId"]] = nextNote["Type"]
+                                _bt = self.FRAME_IMG_H
                             lh_e = (self.FRAME_IMG_H) - _bt
                             if _Type == 6:
                                 if nextNote["LaneId"] != note["LaneId"]:
@@ -415,6 +440,8 @@ class Chart:
                 n
             ) + self.FRAME_IMG_S
             return (n - p) / (nt - pt) * (time - pt) + p
+        else:
+            return -1
         raise ValueError(f"val is 0: {time} -> {prev}/{next}")
 
     def SaveBarLineH(self, b):
@@ -458,6 +485,26 @@ class Chart:
         text = _t
         img1.text((blw, self.FRAME_IMG_H - blh), text, fill=color)
 
+    def groupByInfo(self):
+        """[DEBUG] 分類資訊"""
+        groupKeys = [
+            "LaneId",
+            # 'Time',
+            "NextId",
+        ]
+        groupInfos = {}
+        notes: List[Dict[str, Any]] = self.chart["NoteDataList"]
+        for note in notes:
+            for ik, it in note.items():
+                if ik in groupKeys:
+                    gk = str(it)
+                    if ik not in groupInfos:
+                        groupInfos[ik] = {}
+                    if gk not in groupInfos[ik]:
+                        groupInfos[ik][gk] = []
+                    groupInfos[ik][gk].append(note)
+        return groupInfos
+
     def ChartCommonDataReader(self, data):
         Decoder = [
             "SDRhythmTimes",
@@ -467,9 +514,9 @@ class Chart:
             "FeverTime",
             "ClubItemTriggers",
         ]
-        return self.cl.readTo(data, Decoder)
+        return Model.readTo(data, Decoder)
 
-    def ChartDataReader(self, data):
+    def ChartDataReader(self, data) -> Dict[str, Any]:
         NoteDataDecoder = [
             "LaneId",
             "Type",
@@ -485,4 +532,4 @@ class Chart:
             "BarLineList",
             ["NoteDataList", [NoteDataDecoder]],
         ]
-        return self.cl.readTo(data, Decoder)
+        return Model.readTo(data, Decoder)
